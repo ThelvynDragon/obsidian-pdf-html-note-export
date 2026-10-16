@@ -81,7 +81,7 @@ export async function exportAsHtml(app: App, file: TFile, settings: NoteExportSe
 }
 
 // ─────────────────────────────────────────
-//  PDF export (jsPDF + html2canvas)
+//  PDF export (html2canvas + pdf-lib)
 // ─────────────────────────────────────────
 
 export async function exportAsPdf(app: App, file: TFile, settings: NoteExportSettings): Promise<void> {
