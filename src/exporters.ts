@@ -1,16 +1,18 @@
 import { App, TFile, TFolder, Notice, normalizePath } from "obsidian";
-import { jsPDF } from "jspdf";
+import { PDFDocument, rgb } from "pdf-lib";
 import html2canvas from "html2canvas";
 import { renderNote, buildHtmlDocument } from "./renderer";
 import type { NoteExportSettings } from "./settings";
 
+// Page sizes in PDF points (1 pt = 1/72 inch)
+const MM = 72 / 25.4;
 const PAGE_FORMATS: Record<string, [number, number]> = {
-  a4: [210, 297],
-  a5: [148, 210],
-  letter: [215.9, 279.4],
-  legal: [215.9, 355.6],
+  a4: [210 * MM, 297 * MM],
+  a5: [148 * MM, 210 * MM],
+  letter: [612, 792],
+  legal: [612, 1008],
 };
-const PAGE_MARGIN_MM = 15;
+const PAGE_MARGIN = 15 * MM;
 const RENDER_WIDTH_PX = 800;
 
 // ─────────────────────────────────────────
@@ -116,27 +118,32 @@ export async function exportAsPdf(app: App, file: TFile, settings: NoteExportSet
     });
 
     const [pageWidth, pageHeight] = PAGE_FORMATS[settings.pageSize] ?? PAGE_FORMATS.a4;
-    const imgWidth = pageWidth - 2 * PAGE_MARGIN_MM;
-    const usableHeight = pageHeight - 2 * PAGE_MARGIN_MM;
+    const imgWidth = pageWidth - 2 * PAGE_MARGIN;
+    const usableHeight = pageHeight - 2 * PAGE_MARGIN;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: settings.pageSize });
-    const imgData = canvas.toDataURL("image/png");
+    const pngBytes = await canvasToPng(canvas);
+    const pdf = await PDFDocument.create();
+    pdf.setTitle(file.basename);
+    pdf.setCreator("PDF and HTML Note Export");
+    const image = await pdf.embedPng(pngBytes);
+    const white = rgb(1, 1, 1);
 
-    let page = 0;
-    for (let remaining = imgHeight; remaining > 0; remaining -= usableHeight) {
-      if (page > 0) pdf.addPage();
-      pdf.addImage(imgData, "PNG", PAGE_MARGIN_MM, PAGE_MARGIN_MM - page * usableHeight, imgWidth, imgHeight);
-      // Mask the overflow in the top and bottom margins
-      pdf.setFillColor(255, 255, 255);
-      pdf.rect(0, 0, pageWidth, PAGE_MARGIN_MM, "F");
-      pdf.rect(0, pageHeight - PAGE_MARGIN_MM, pageWidth, PAGE_MARGIN_MM, "F");
-      page++;
+    const pageCount = Math.max(1, Math.ceil(imgHeight / usableHeight - 1e-6));
+    for (let i = 0; i < pageCount; i++) {
+      const page = pdf.addPage([pageWidth, pageHeight]);
+      // pdf-lib uses a bottom-left origin: shift the long image up by one
+      // usable page height per page, then mask the top and bottom margins.
+      const imageTop = pageHeight - PAGE_MARGIN + i * usableHeight;
+      page.drawImage(image, { x: PAGE_MARGIN, y: imageTop - imgHeight, width: imgWidth, height: imgHeight });
+      page.drawRectangle({ x: 0, y: pageHeight - PAGE_MARGIN, width: pageWidth, height: PAGE_MARGIN, color: white });
+      page.drawRectangle({ x: 0, y: 0, width: pageWidth, height: PAGE_MARGIN, color: white });
     }
+    const pdfBytes = await pdf.save();
 
     const folder = await ensureFolder(app, settings.exportFolder);
     const path = uniquePath(app, folder, file.basename, "pdf");
-    await writeFile(app, path, pdf.output("arraybuffer"));
+    await writeFile(app, path, pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength));
 
     notice.hide();
     new Notice(`PDF exported to ${path}`);
@@ -147,6 +154,18 @@ export async function exportAsPdf(app: App, file: TFile, settings: NoteExportSet
   } finally {
     iframe?.remove();
   }
+}
+
+function canvasToPng(canvas: HTMLCanvasElement): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("Could not encode the page image"));
+        return;
+      }
+      blob.arrayBuffer().then(resolve, reject);
+    }, "image/png");
+  });
 }
 
 function sleep(ms: number): Promise<void> {

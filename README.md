@@ -4,7 +4,7 @@ Export your Obsidian notes as **PDF** or **self-contained HTML5** files with a c
 
 ## Features
 
-- **PDF export** — Generates PDF directly in JavaScript (jsPDF + html2canvas). No external dependencies, no print dialog.
+- **PDF export** — Generates PDF directly in JavaScript (html2canvas + pdf-lib). No external dependencies, no print dialog.
 - **Standalone HTML5 export** — Produces a single HTML file with embedded CSS and base64 images. Opens on any device.
 - **Built-in theme** — Clean, professional styling independent of your Obsidian theme.
 - **Embedded images** — Vault images are automatically converted to base64 for fully self-contained exports.

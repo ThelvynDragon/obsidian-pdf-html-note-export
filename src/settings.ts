@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, PluginSettingTab, Setting, SettingDefinitionItem } from "obsidian";
 import type NoteExportPlugin from "./main";
 
 export type ExportFormat = "pdf" | "html";
@@ -30,6 +30,67 @@ export class NoteExportSettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
+  /**
+   * Declarative settings (Obsidian 1.13+): rendered by Obsidian and
+   * indexed by the settings search. display() remains as a fallback.
+   */
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    return [
+      {
+        name: "Default format",
+        desc: "Format used by the ribbon icon and the default-format command.",
+        control: {
+          type: "dropdown",
+          key: "defaultFormat",
+          defaultValue: DEFAULT_SETTINGS.defaultFormat,
+          options: { pdf: "PDF", html: "HTML" },
+        },
+      },
+      {
+        name: "Page size",
+        desc: "Page size for PDF export.",
+        control: {
+          type: "dropdown",
+          key: "pageSize",
+          defaultValue: DEFAULT_SETTINGS.pageSize,
+          options: { a4: "A4", a5: "A5", letter: "Letter", legal: "Legal" },
+        },
+      },
+      {
+        name: "Include metadata",
+        desc: "Add title and frontmatter tags as a document header.",
+        control: { type: "toggle", key: "includeMetadata", defaultValue: DEFAULT_SETTINGS.includeMetadata },
+      },
+      {
+        name: "Include date",
+        desc: "Add the export date in the document header.",
+        control: { type: "toggle", key: "includeDate", defaultValue: DEFAULT_SETTINGS.includeDate },
+      },
+      {
+        name: "Export folder",
+        desc: "Folder in the vault where exported files are saved. Created automatically if it does not exist.",
+        control: {
+          type: "folder",
+          key: "exportFolder",
+          defaultValue: DEFAULT_SETTINGS.exportFolder,
+          placeholder: "Folder path",
+        },
+      },
+      {
+        name: "Custom CSS",
+        desc: "Additional CSS applied after the built-in export theme.",
+        control: {
+          type: "textarea",
+          key: "customCssSnippet",
+          defaultValue: DEFAULT_SETTINGS.customCssSnippet,
+          placeholder: "Your custom CSS rules",
+          rows: 6,
+        },
+      },
+    ];
+  }
+
+  /** Fallback for Obsidian versions older than 1.13. */
   display(): void {
     const { containerEl } = this;
     containerEl.empty();

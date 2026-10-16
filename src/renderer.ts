@@ -1,4 +1,4 @@
-import { App, MarkdownRenderer, Component, TFile } from "obsidian";
+import { App, MarkdownRenderer, Component, TFile, normalizePath } from "obsidian";
 import { EXPORT_CSS } from "./styles";
 import type { NoteExportSettings } from "./settings";
 
@@ -86,11 +86,11 @@ async function embedImages(app: App, container: HTMLElement, sourceFile: TFile):
         imagePath = decodeURIComponent(match[1]);
       }
 
-      // Try as a vault link first, then as a path relative to the vault root
+      // Resolve as a vault link, then as an exact vault path
       let imageFile = app.metadataCache.getFirstLinkpathDest(imagePath, sourceFile.path);
       if (!imageFile) {
-        const candidate = app.vault.getFiles().find((f) => imagePath.endsWith(f.path));
-        imageFile = candidate ?? null;
+        const direct = app.vault.getAbstractFileByPath(normalizePath(imagePath));
+        imageFile = direct instanceof TFile ? direct : null;
       }
 
       if (imageFile) {

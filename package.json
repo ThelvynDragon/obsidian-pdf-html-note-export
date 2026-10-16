@@ -1,6 +1,6 @@
 {
   "name": "obsidian-pdf-html-note-export",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Export Obsidian notes as styled PDF or self-contained HTML5 files",
   "main": "main.js",
   "scripts": {
@@ -18,14 +18,13 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "builtin-modules": "^3.3.0",
-    "esbuild": "^0.21.0",
+    "esbuild": "^0.28.2",
     "obsidian": "latest",
     "tslib": "2.6.2",
     "typescript": "5.4.5"
   },
   "dependencies": {
-    "jspdf": "^2.5.1",
-    "html2canvas": "^1.4.1"
+    "html2canvas": "^1.4.1",
+    "pdf-lib": "^1.17.1"
   }
 }
