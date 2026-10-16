@@ -23,7 +23,7 @@ Export your Obsidian notes as **PDF** or **self-contained HTML5** files with a c
 
 ### Manual installation
 
-1. Download the latest release from [GitHub Releases](https://github.com/LaurentLefebvreNovartis/obsidian-pdf-html-note-export/releases).
+1. Download the latest release from [GitHub Releases](https://github.com/ThelvynDragon/obsidian-pdf-html-note-export/releases).
 2. Extract `main.js`, `manifest.json`, and `styles.css` into `.obsidian/plugins/pdf-html-note-export/`.
 3. Restart Obsidian and enable the plugin in Settings → Community plugins.
 
