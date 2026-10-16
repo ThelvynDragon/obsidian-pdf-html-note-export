@@ -34,8 +34,6 @@ export class NoteExportSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Note Export — Settings" });
-
     // --- Default export format ---
     new Setting(containerEl)
       .setName("Default format")
@@ -43,7 +41,7 @@ export class NoteExportSettingTab extends PluginSettingTab {
       .addDropdown((dropdown) =>
         dropdown
           .addOption("pdf", "PDF")
-          .addOption("html", "Standalone HTML5")
+          .addOption("html", "HTML")
           .setValue(this.plugin.settings.defaultFormat)
           .onChange(async (value) => {
             this.plugin.settings.defaultFormat = value as ExportFormat;
@@ -103,7 +101,7 @@ export class NoteExportSettingTab extends PluginSettingTab {
       )
       .addText((text) =>
         text
-          .setPlaceholder("exports")
+          .setPlaceholder("Folder path")
           .setValue(this.plugin.settings.exportFolder)
           .onChange(async (value) => {
             this.plugin.settings.exportFolder = value.trim() || "exports";
@@ -113,25 +111,17 @@ export class NoteExportSettingTab extends PluginSettingTab {
 
     // --- Custom CSS snippet ---
     new Setting(containerEl)
+      .setClass("pdf-html-note-export-css-setting")
       .setName("Custom CSS")
-      .setDesc("Additional CSS appended after the built-in theme (optional).")
+      .setDesc("Additional CSS applied after the built-in export theme.")
       .addTextArea((text) =>
         text
-          .setPlaceholder("/* Your custom styles */")
+          .setPlaceholder("Your custom CSS rules")
           .setValue(this.plugin.settings.customCssSnippet)
           .onChange(async (value) => {
             this.plugin.settings.customCssSnippet = value;
             await this.plugin.saveSettings();
           })
       );
-
-    // Make the textarea bigger
-    const textAreas = containerEl.querySelectorAll("textarea");
-    textAreas.forEach((ta) => {
-      ta.style.width = "100%";
-      ta.style.minHeight = "100px";
-      ta.style.fontFamily = "monospace";
-      ta.style.fontSize = "13px";
-    });
   }
 }

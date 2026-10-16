@@ -33,9 +33,9 @@ Export your Obsidian notes as **PDF** or **self-contained HTML5** files with a c
 
 | Command | Description |
 |---------|-------------|
-| **Quick export** | Exports using your default format (PDF or HTML) |
-| **Export as PDF** | Generates a PDF in the export folder |
-| **Export as standalone HTML5** | Generates a self-contained HTML file |
+| **Export current note in default format** | Exports using your default format (PDF or HTML) |
+| **Export current note as PDF** | Generates a PDF in the export folder |
+| **Export current note as HTML** | Generates a self-contained HTML file |
 
 ### Ribbon icon
 

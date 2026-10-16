@@ -3,52 +3,52 @@ import { EXPORT_CSS } from "./styles";
 import type { NoteExportSettings } from "./settings";
 
 /**
- * Renders an Obsidian note to a styled HTML string.
- * Uses Obsidian's own MarkdownRenderer for full compatibility
- * with plugins, callouts, embeds, etc.
+ * Renders a note into a detached DOM element using Obsidian's own
+ * MarkdownRenderer (callouts, embeds and other plugins' syntax are supported).
+ * Vault images are inlined as base64 data URIs.
  */
-export async function renderNoteToHtml(
+export async function renderNote(
   app: App,
   file: TFile,
-  settings: NoteExportSettings,
-  component: Component
-): Promise<string> {
+  settings: NoteExportSettings
+): Promise<HTMLElement> {
   const content = await app.vault.cachedRead(file);
   const metadata = app.metadataCache.getFileCache(file);
 
-  // Create a temporary container for rendering
-  const container = document.createElement("div");
-  container.addClass("markdown-preview-view");
+  const root = createDiv();
+  if (settings.includeMetadata) {
+    buildMetadataHeader(root, file, metadata, settings);
+  }
 
-  // Use Obsidian's MarkdownRenderer to render the full note
-  await MarkdownRenderer.render(app, content, container, file.path, component);
+  const body = root.createDiv({ cls: "markdown-preview-view" });
 
-  // Process embedded images: convert vault images to base64 data URIs
-  await embedImages(app, container, file);
+  // Dedicated component so that render children are released after export
+  const component = new Component();
+  component.load();
+  try {
+    await MarkdownRenderer.render(app, content, body, file.path, component);
+    await embedImages(app, body, file);
+  } finally {
+    component.unload();
+  }
 
-  // Build the metadata header
-  const metaHtml = buildMetadataHeader(file, metadata, settings);
-
-  // Build the full HTML
-  const bodyContent = metaHtml + container.innerHTML;
-
-  return bodyContent;
+  return root;
 }
 
 /**
- * Wraps rendered content into a complete standalone HTML5 document.
+ * Builds a complete standalone HTML5 document from a rendered note.
  */
-export function wrapInHtmlDocument(
-  bodyContent: string,
+export function buildHtmlDocument(
+  rendered: HTMLElement,
   title: string,
   settings: NoteExportSettings
 ): string {
   const customCss = settings.customCssSnippet
-    ? `\n<style>\n${settings.customCssSnippet}\n</style>`
+    ? `\n  <style>\n${settings.customCssSnippet}\n  </style>`
     : "";
 
   return `<!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -59,108 +59,87 @@ ${EXPORT_CSS}
 </head>
 <body>
   <div class="ne-container">
-${bodyContent}
+${rendered.outerHTML}
   </div>
 </body>
 </html>`;
 }
 
-/**
- * Converts vault images in the rendered HTML to inline base64 data URIs.
- * This makes the HTML fully self-contained.
- */
-async function embedImages(
-  app: App,
-  container: HTMLElement,
-  sourceFile: TFile
-): Promise<void> {
-  const images = container.querySelectorAll("img");
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
+  return text.replace(/[&<>"']/g, (m) => map[m] ?? m);
+}
 
-  for (const img of Array.from(images)) {
+async function embedImages(app: App, container: HTMLElement, sourceFile: TFile): Promise<void> {
+  const images = Array.from(container.querySelectorAll("img"));
+
+  for (const img of images) {
     const src = img.getAttribute("src");
-    if (!src) continue;
-
-    // Skip already-embedded images and external URLs
-    if (src.startsWith("data:") || src.startsWith("http://") || src.startsWith("https://")) {
+    if (!src || src.startsWith("data:") || src.startsWith("http://") || src.startsWith("https://")) {
       continue;
     }
 
     try {
-      // Resolve the image path relative to the source file
       let imagePath = src;
-
-      // Handle Obsidian's internal URL format (app://local/...)
-      if (src.includes("app://")) {
-        const match = src.match(/app:\/\/[^/]+\/(.+)/);
-        if (match) {
-          imagePath = decodeURIComponent(match[1]);
-        }
+      const match = src.match(/^app:\/\/[^/]+\/(.+?)(\?.*)?$/);
+      if (match) {
+        imagePath = decodeURIComponent(match[1]);
       }
 
-      // Try to find the file in the vault
-      const imageFile = app.metadataCache.getFirstLinkpathDest(
-        imagePath,
-        sourceFile.path
-      );
+      // Try as a vault link first, then as a path relative to the vault root
+      let imageFile = app.metadataCache.getFirstLinkpathDest(imagePath, sourceFile.path);
+      if (!imageFile) {
+        const candidate = app.vault.getFiles().find((f) => imagePath.endsWith(f.path));
+        imageFile = candidate ?? null;
+      }
 
       if (imageFile) {
-        const arrayBuffer = await app.vault.readBinary(imageFile);
-        const base64 = arrayBufferToBase64(arrayBuffer);
-        const mimeType = getMimeType(imageFile.extension);
-        img.setAttribute("src", `data:${mimeType};base64,${base64}`);
+        const buffer = await app.vault.readBinary(imageFile);
+        img.setAttribute("src", `data:${getMimeType(imageFile.extension)};base64,${arrayBufferToBase64(buffer)}`);
       }
     } catch (e) {
-      console.warn(`Note Export: Could not embed image ${src}`, e);
+      console.warn(`PDF & HTML Note Export: could not embed image ${src}`, e);
     }
   }
 }
 
 function buildMetadataHeader(
+  root: HTMLElement,
   file: TFile,
   metadata: ReturnType<App["metadataCache"]["getFileCache"]>,
   settings: NoteExportSettings
-): string {
-  if (!settings.includeMetadata) return "";
-
-  const title = file.basename;
-  const parts: string[] = [];
-
-  parts.push(`<div class="ne-metadata">`);
-  parts.push(`  <div class="ne-title">${escapeHtml(title)}</div>`);
+): void {
+  const header = root.createDiv({ cls: "ne-metadata" });
+  header.createDiv({ cls: "ne-title", text: file.basename });
 
   if (settings.includeDate) {
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("fr-FR", {
+    const dateStr = new Date().toLocaleString(undefined, {
       year: "numeric",
       month: "long",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     });
-    parts.push(`  <div class="ne-date">Exporté le ${dateStr}</div>`);
+    header.createDiv({ cls: "ne-date", text: `Exported on ${dateStr}` });
   }
 
-  // Add frontmatter tags if present
-  if (metadata?.frontmatter?.tags) {
-    const tags: string[] = Array.isArray(metadata.frontmatter.tags)
-      ? metadata.frontmatter.tags
-      : [metadata.frontmatter.tags];
-    const tagHtml = tags
-      .map((t: string) => `<span class="tag">#${escapeHtml(t)}</span>`)
-      .join(" ");
-    parts.push(`  <div class="ne-tags" style="margin-top: 0.5em;">${tagHtml}</div>`);
+  const rawTags: unknown = metadata?.frontmatter?.tags;
+  const tags = Array.isArray(rawTags) ? rawTags : rawTags ? [rawTags] : [];
+  if (tags.length > 0) {
+    const tagsEl = header.createDiv({ cls: "ne-tags" });
+    for (const tag of tags) {
+      tagsEl.createSpan({ cls: "tag", text: `#${String(tag)}` });
+      tagsEl.appendText(" ");
+    }
   }
-
-  parts.push(`</div>`);
-
-  return parts.join("\n");
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
+  const chunk = 0x8000;
   let binary = "";
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
   }
   return window.btoa(binary);
 }
@@ -176,16 +155,5 @@ function getMimeType(extension: string): string {
     bmp: "image/bmp",
     ico: "image/x-icon",
   };
-  return mimeTypes[extension.toLowerCase()] || "image/png";
-}
-
-function escapeHtml(text: string): string {
-  const map: Record<string, string> = {
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#039;",
-  };
-  return text.replace(/[&<>"']/g, (m) => map[m]);
+  return mimeTypes[extension.toLowerCase()] ?? "image/png";
 }

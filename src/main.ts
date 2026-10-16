@@ -1,115 +1,85 @@
 import { Plugin, TFile, Notice } from "obsidian";
-import {
-  NoteExportSettings,
-  DEFAULT_SETTINGS,
-  NoteExportSettingTab,
-} from "./settings";
+import { NoteExportSettings, DEFAULT_SETTINGS, NoteExportSettingTab, ExportFormat } from "./settings";
 import { exportAsHtml, exportAsPdf } from "./exporters";
 
 export default class NoteExportPlugin extends Plugin {
-  settings: NoteExportSettings = DEFAULT_SETTINGS;
+  settings: NoteExportSettings = { ...DEFAULT_SETTINGS };
 
   async onload(): Promise<void> {
     await this.loadSettings();
 
-    // ── Ribbon icon ──────────────────────────────
-    this.addRibbonIcon("file-down", "Export note", async () => {
-      const file = this.app.workspace.getActiveFile();
+    this.addRibbonIcon("file-down", "Export note", () => {
+      const file = this.getActiveMarkdownFile();
       if (!file) {
         new Notice("No active note to export.");
         return;
       }
-      await this.exportNote(file, this.settings.defaultFormat);
+      void this.exportNote(file, this.settings.defaultFormat);
     });
 
-    // ── Command: Export as PDF ───────────────────
     this.addCommand({
       id: "export-pdf",
-      name: "Export as PDF",
-      checkCallback: (checking: boolean) => {
-        const file = this.app.workspace.getActiveFile();
-        if (!file) return false;
-        if (!checking) {
-          exportAsPdf(this.app, file, this.settings, this);
-        }
-        return true;
-      },
+      name: "Export current note as PDF",
+      checkCallback: (checking) => this.runOnActiveFile(checking, "pdf"),
     });
 
-    // ── Command: Export as HTML5 ─────────────────
     this.addCommand({
       id: "export-html",
-      name: "Export as standalone HTML5",
-      checkCallback: (checking: boolean) => {
-        const file = this.app.workspace.getActiveFile();
-        if (!file) return false;
-        if (!checking) {
-          exportAsHtml(this.app, file, this.settings, this);
-        }
-        return true;
-      },
+      name: "Export current note as HTML",
+      checkCallback: (checking) => this.runOnActiveFile(checking, "html"),
     });
 
-    // ── Command: Quick export (default format) ───
     this.addCommand({
       id: "export-default",
-      name: "Quick export (default format)",
-      checkCallback: (checking: boolean) => {
-        const file = this.app.workspace.getActiveFile();
-        if (!file) return false;
-        if (!checking) {
-          this.exportNote(file, this.settings.defaultFormat);
-        }
-        return true;
-      },
+      name: "Export current note in default format",
+      checkCallback: (checking) => this.runOnActiveFile(checking, this.settings.defaultFormat),
     });
 
-    // ── File menu integration ────────────────────
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
         if (!(file instanceof TFile) || file.extension !== "md") return;
 
-        menu.addItem((item) => {
+        menu.addItem((item) =>
           item
             .setTitle("Export as PDF")
             .setIcon("file-down")
-            .onClick(async () => {
-              await exportAsPdf(this.app, file, this.settings, this);
-            });
-        });
+            .onClick(() => this.exportNote(file, "pdf"))
+        );
 
-        menu.addItem((item) => {
+        menu.addItem((item) =>
           item
-            .setTitle("Export as HTML5")
-            .setIcon("code")
-            .onClick(async () => {
-              await exportAsHtml(this.app, file, this.settings, this);
-            });
-        });
+            .setTitle("Export as HTML")
+            .setIcon("file-code")
+            .onClick(() => this.exportNote(file, "html"))
+        );
       })
     );
 
-    // ── Settings tab ─────────────────────────────
     this.addSettingTab(new NoteExportSettingTab(this.app, this));
   }
 
-  onunload(): void {
-    // cleanup if needed
+  private getActiveMarkdownFile(): TFile | null {
+    const file = this.app.workspace.getActiveFile();
+    return file && file.extension === "md" ? file : null;
   }
 
-  private async exportNote(
-    file: TFile,
-    format: "pdf" | "html"
-  ): Promise<void> {
+  private runOnActiveFile(checking: boolean, format: ExportFormat): boolean {
+    const file = this.getActiveMarkdownFile();
+    if (!file) return false;
+    if (!checking) void this.exportNote(file, format);
+    return true;
+  }
+
+  private async exportNote(file: TFile, format: ExportFormat): Promise<void> {
     if (format === "html") {
-      await exportAsHtml(this.app, file, this.settings, this);
+      await exportAsHtml(this.app, file, this.settings);
     } else {
-      await exportAsPdf(this.app, file, this.settings, this);
+      await exportAsPdf(this.app, file, this.settings);
     }
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, (await this.loadData()) as Partial<NoteExportSettings>);
   }
 
   async saveSettings(): Promise<void> {

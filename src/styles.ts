@@ -255,6 +255,9 @@ img {
   margin: 0 0 0.3em 0;
   line-height: 1.2;
 }
+.ne-metadata .ne-tags {
+  margin-top: 0.5em;
+}
 .ne-metadata .ne-date {
   font-size: 0.85em;
 }

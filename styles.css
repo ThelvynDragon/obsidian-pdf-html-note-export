@@ -1,6 +1,19 @@
-/* Note Export plugin — Obsidian integration styles */
+/* PDF & HTML Note Export — plugin UI styles (scoped to this plugin only) */
 
-/* Settings tab tweaks */
-.setting-item-description {
-  white-space: normal;
+.pdf-html-note-export-css-setting textarea {
+  width: 100%;
+  min-height: 120px;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-small);
+}
+
+.pdf-html-note-export-frame {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  width: 800px;
+  height: 1123px;
+  border: none;
+  visibility: hidden;
+  pointer-events: none;
 }

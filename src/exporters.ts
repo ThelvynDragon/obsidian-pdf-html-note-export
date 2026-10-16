@@ -1,196 +1,154 @@
-import { App, TFile, TFolder, Notice, Component, normalizePath } from "obsidian";
-import { renderNoteToHtml, wrapInHtmlDocument } from "./renderer";
-import { EXPORT_CSS } from "./styles";
+import { App, TFile, TFolder, Notice, normalizePath } from "obsidian";
+import { jsPDF } from "jspdf";
+import html2canvas from "html2canvas";
+import { renderNote, buildHtmlDocument } from "./renderer";
 import type { NoteExportSettings } from "./settings";
 
+const PAGE_FORMATS: Record<string, [number, number]> = {
+  a4: [210, 297],
+  a5: [148, 210],
+  letter: [215.9, 279.4],
+  legal: [215.9, 355.6],
+};
+const PAGE_MARGIN_MM = 15;
+const RENDER_WIDTH_PX = 800;
+
 // ─────────────────────────────────────────
-//  Ensure export folder exists (recursive)
+//  Vault helpers
 // ─────────────────────────────────────────
 
-async function ensureExportFolder(app: App, folderPath: string): Promise<void> {
-  const normalized = normalizePath(folderPath);
-  const parts = normalized.split("/");
+async function ensureFolder(app: App, folderPath: string): Promise<string> {
+  const normalized = normalizePath(folderPath || "exports");
   let current = "";
-  for (const part of parts) {
+  for (const part of normalized.split("/")) {
     current = current ? `${current}/${part}` : part;
     const existing = app.vault.getAbstractFileByPath(current);
-    if (!existing) {
-      try {
-        await app.vault.createFolder(current);
-      } catch (e) {
-        console.log(`Note Export: folder ${current} may already exist`, e);
-      }
-    }
+    if (existing instanceof TFolder) continue;
+    if (existing) throw new Error(`"${current}" exists and is not a folder`);
+    await app.vault.createFolder(current);
   }
+  return normalized;
 }
 
-/**
- * Generate a unique export file path to avoid overwriting.
- */
-function getUniqueFilePath(app: App, folder: string, basename: string, extension: string): string {
-  const base = normalizePath(`${folder}/${basename}.${extension}`);
-  if (!app.vault.getAbstractFileByPath(base)) {
-    return base;
-  }
+function uniquePath(app: App, folder: string, basename: string, extension: string): string {
+  let candidate = normalizePath(`${folder}/${basename}.${extension}`);
   let counter = 1;
-  while (counter < 100) {
-    const candidate = normalizePath(`${folder}/${basename} (${counter}).${extension}`);
-    if (!app.vault.getAbstractFileByPath(candidate)) {
-      return candidate;
-    }
+  while (app.vault.getAbstractFileByPath(candidate)) {
+    candidate = normalizePath(`${folder}/${basename} (${counter}).${extension}`);
     counter++;
   }
-  return normalizePath(`${folder}/${basename} (${Date.now()}).${extension}`);
+  return candidate;
 }
 
 /**
- * Write a string file to vault using adapter.write.
+ * Writes through the Vault API (preferred), falling back to the adapter
+ * if the vault index is out of sync with the file system.
  */
-async function writeStringToVault(app: App, path: string, content: string): Promise<void> {
-  const normalized = normalizePath(path);
-  await app.vault.adapter.write(normalized, content);
-  await sleep(200);
-}
-
-/**
- * Write a binary file to vault using adapter.writeBinary.
- */
-async function writeBinaryToVault(app: App, path: string, data: ArrayBuffer): Promise<void> {
-  const normalized = normalizePath(path);
-  await app.vault.adapter.writeBinary(normalized, data);
-  await sleep(200);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// ─────────────────────────────────────────
-//  HTML5 Export — saves to vault
-// ─────────────────────────────────────────
-
-export async function exportAsHtml(
-  app: App,
-  file: TFile,
-  settings: NoteExportSettings,
-  component: Component
-): Promise<void> {
+async function writeFile(app: App, path: string, data: string | ArrayBuffer): Promise<void> {
   try {
-    new Notice("⏳ Generating HTML…");
-
-    const bodyContent = await renderNoteToHtml(app, file, settings, component);
-    const html = wrapInHtmlDocument(bodyContent, file.basename, settings);
-
-    await ensureExportFolder(app, settings.exportFolder);
-    const exportPath = getUniqueFilePath(app, settings.exportFolder, file.basename, "html");
-
-    await writeStringToVault(app, exportPath, html);
-
-    new Notice(`✅ HTML exported → ${exportPath}`);
+    if (typeof data === "string") await app.vault.create(path, data);
+    else await app.vault.createBinary(path, data);
   } catch (e) {
-    console.error("Note Export: HTML export failed", e);
-    new Notice(`❌ HTML export error: ${(e as Error).message}`);
+    console.warn("PDF & HTML Note Export: Vault API write failed, using adapter", e);
+    if (typeof data === "string") await app.vault.adapter.write(path, data);
+    else await app.vault.adapter.writeBinary(path, data);
   }
 }
 
 // ─────────────────────────────────────────
-//  PDF Export — jsPDF + html2canvas
+//  HTML5 export
 // ─────────────────────────────────────────
 
-export async function exportAsPdf(
-  app: App,
-  file: TFile,
-  settings: NoteExportSettings,
-  component: Component
-): Promise<void> {
+export async function exportAsHtml(app: App, file: TFile, settings: NoteExportSettings): Promise<void> {
+  const notice = new Notice("Generating HTML…", 0);
   try {
-    new Notice("⏳ Generating PDF…");
+    const rendered = await renderNote(app, file, settings);
+    const html = buildHtmlDocument(rendered, file.basename, settings);
 
-    const bodyContent = await renderNoteToHtml(app, file, settings, component);
+    const folder = await ensureFolder(app, settings.exportFolder);
+    const path = uniquePath(app, folder, file.basename, "html");
+    await writeFile(app, path, html);
 
-    const { default: jsPDF } = await import("jspdf");
-    const { default: html2canvas } = await import("html2canvas");
+    notice.hide();
+    new Notice(`HTML exported to ${path}`);
+  } catch (e) {
+    notice.hide();
+    console.error("PDF & HTML Note Export: HTML export failed", e);
+    new Notice(`HTML export failed: ${(e as Error).message}`);
+  }
+}
 
-    // Create a temporary off-screen rendering container
-    const renderDiv = document.createElement("div");
-    renderDiv.style.position = "fixed";
-    renderDiv.style.top = "-10000px";
-    renderDiv.style.left = "-10000px";
-    renderDiv.style.width = "800px";
-    renderDiv.style.background = "#ffffff";
-    renderDiv.style.zIndex = "-9999";
+// ─────────────────────────────────────────
+//  PDF export (jsPDF + html2canvas)
+// ─────────────────────────────────────────
 
-    const styleEl = document.createElement("style");
-    styleEl.textContent = EXPORT_CSS;
-    if (settings.customCssSnippet) {
-      styleEl.textContent += "\n" + settings.customCssSnippet;
-    }
+export async function exportAsPdf(app: App, file: TFile, settings: NoteExportSettings): Promise<void> {
+  const notice = new Notice("Generating PDF…", 0);
+  let iframe: HTMLIFrameElement | null = null;
+  try {
+    const rendered = await renderNote(app, file, settings);
+    const html = buildHtmlDocument(rendered, file.basename, settings);
 
-    const contentDiv = document.createElement("div");
-    contentDiv.className = "ne-container";
-    contentDiv.innerHTML = bodyContent;
+    // Render in an isolated, off-screen iframe so the export theme
+    // never leaks into Obsidian's own interface.
+    iframe = document.body.createEl("iframe", { cls: "pdf-html-note-export-frame" });
+    const loaded = new Promise<void>((resolve) => {
+      iframe?.addEventListener("load", () => resolve(), { once: true });
+    });
+    iframe.srcdoc = html;
+    await loaded;
 
-    renderDiv.appendChild(styleEl);
-    renderDiv.appendChild(contentDiv);
-    document.body.appendChild(renderDiv);
+    const frameDoc = iframe.contentDocument;
+    const target = frameDoc?.querySelector<HTMLElement>(".ne-container");
+    if (!frameDoc || !target) throw new Error("Could not prepare the rendering frame");
 
-    await sleep(500);
+    // Let fonts and inline images settle
+    await frameDoc.fonts?.ready;
+    await sleep(200);
 
-    const canvas = await html2canvas(contentDiv, {
+    const canvas = await html2canvas(target, {
       scale: 2,
       useCORS: true,
       logging: false,
       backgroundColor: "#ffffff",
-      width: 800,
+      width: RENDER_WIDTH_PX,
+      windowWidth: RENDER_WIDTH_PX,
     });
 
-    // Page dimensions
-    const pageFormats: Record<string, [number, number]> = {
-      a4: [210, 297],
-      a5: [148, 210],
-      letter: [215.9, 279.4],
-      legal: [215.9, 355.6],
-    };
-    const [pageWidth, pageHeight] = pageFormats[settings.pageSize] || pageFormats.a4;
-    const margin = 15;
-    const contentWidth = pageWidth - 2 * margin;
-    const usableHeight = pageHeight - 2 * margin;
-
-    const imgWidth = contentWidth;
+    const [pageWidth, pageHeight] = PAGE_FORMATS[settings.pageSize] ?? PAGE_FORMATS.a4;
+    const imgWidth = pageWidth - 2 * PAGE_MARGIN_MM;
+    const usableHeight = pageHeight - 2 * PAGE_MARGIN_MM;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "mm",
-      format: settings.pageSize,
-    });
-
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: settings.pageSize });
     const imgData = canvas.toDataURL("image/png");
-    let heightLeft = imgHeight;
-    let page = 0;
 
-    while (heightLeft > 0) {
-      if (page > 0) {
-        pdf.addPage();
-      }
-      const sourceY = page * usableHeight;
-      pdf.addImage(imgData, "PNG", margin, margin - sourceY, imgWidth, imgHeight);
-      heightLeft -= usableHeight;
+    let page = 0;
+    for (let remaining = imgHeight; remaining > 0; remaining -= usableHeight) {
+      if (page > 0) pdf.addPage();
+      pdf.addImage(imgData, "PNG", PAGE_MARGIN_MM, PAGE_MARGIN_MM - page * usableHeight, imgWidth, imgHeight);
+      // Mask the overflow in the top and bottom margins
+      pdf.setFillColor(255, 255, 255);
+      pdf.rect(0, 0, pageWidth, PAGE_MARGIN_MM, "F");
+      pdf.rect(0, pageHeight - PAGE_MARGIN_MM, pageWidth, PAGE_MARGIN_MM, "F");
       page++;
     }
 
-    document.body.removeChild(renderDiv);
+    const folder = await ensureFolder(app, settings.exportFolder);
+    const path = uniquePath(app, folder, file.basename, "pdf");
+    await writeFile(app, path, pdf.output("arraybuffer"));
 
-    const pdfOutput = pdf.output("arraybuffer");
-
-    await ensureExportFolder(app, settings.exportFolder);
-    const exportPath = getUniqueFilePath(app, settings.exportFolder, file.basename, "pdf");
-
-    await writeBinaryToVault(app, exportPath, pdfOutput);
-
-    new Notice(`✅ PDF exported → ${exportPath}`);
+    notice.hide();
+    new Notice(`PDF exported to ${path}`);
   } catch (e) {
-    console.error("Note Export: jsPDF export failed", e);
-    new Notice(`❌ PDF export error: ${(e as Error).message}`);
+    notice.hide();
+    console.error("PDF & HTML Note Export: PDF export failed", e);
+    new Notice(`PDF export failed: ${(e as Error).message}`);
+  } finally {
+    iframe?.remove();
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }

@@ -1,13 +1,19 @@
 {
   "name": "obsidian-pdf-html-note-export",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Export Obsidian notes as styled PDF or self-contained HTML5 files",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
   },
-  "keywords": ["obsidian", "plugin", "pdf", "html", "export"],
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "pdf",
+    "html",
+    "export"
+  ],
   "author": "Laurent Lefebvre",
   "license": "MIT",
   "devDependencies": {
