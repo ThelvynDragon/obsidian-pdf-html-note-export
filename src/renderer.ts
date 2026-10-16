@@ -98,7 +98,7 @@ async function embedImages(app: App, container: HTMLElement, sourceFile: TFile):
         img.setAttribute("src", `data:${getMimeType(imageFile.extension)};base64,${arrayBufferToBase64(buffer)}`);
       }
     } catch (e) {
-      console.warn(`PDF & HTML Note Export: could not embed image ${src}`, e);
+      console.warn(`PDF and HTML Note Export: could not embed image ${src}`, e);
     }
   }
 }

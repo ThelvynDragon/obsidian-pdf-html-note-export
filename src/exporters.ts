@@ -49,7 +49,7 @@ async function writeFile(app: App, path: string, data: string | ArrayBuffer): Pr
     if (typeof data === "string") await app.vault.create(path, data);
     else await app.vault.createBinary(path, data);
   } catch (e) {
-    console.warn("PDF & HTML Note Export: Vault API write failed, using adapter", e);
+    console.warn("PDF and HTML Note Export: Vault API write failed, using adapter", e);
     if (typeof data === "string") await app.vault.adapter.write(path, data);
     else await app.vault.adapter.writeBinary(path, data);
   }
@@ -73,7 +73,7 @@ export async function exportAsHtml(app: App, file: TFile, settings: NoteExportSe
     new Notice(`HTML exported to ${path}`);
   } catch (e) {
     notice.hide();
-    console.error("PDF & HTML Note Export: HTML export failed", e);
+    console.error("PDF and HTML Note Export: HTML export failed", e);
     new Notice(`HTML export failed: ${(e as Error).message}`);
   }
 }
@@ -142,7 +142,7 @@ export async function exportAsPdf(app: App, file: TFile, settings: NoteExportSet
     new Notice(`PDF exported to ${path}`);
   } catch (e) {
     notice.hide();
-    console.error("PDF & HTML Note Export: PDF export failed", e);
+    console.error("PDF and HTML Note Export: PDF export failed", e);
     new Notice(`PDF export failed: ${(e as Error).message}`);
   } finally {
     iframe?.remove();

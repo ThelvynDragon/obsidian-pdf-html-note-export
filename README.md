@@ -1,4 +1,4 @@
-# PDF & HTML Note Export
+# PDF and HTML Note Export
 
 Export your Obsidian notes as **PDF** or **self-contained HTML5** files with a clean, professional built-in theme. Works on desktop and Android.
 
