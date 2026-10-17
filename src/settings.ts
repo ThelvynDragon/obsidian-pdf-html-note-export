@@ -9,6 +9,7 @@ export interface NoteExportSettings {
   pageSize: PageSize;
   includeMetadata: boolean;
   includeDate: boolean;
+  selectableText: boolean;
   customCssSnippet: string;
   exportFolder: string;
 }
@@ -18,6 +19,7 @@ export const DEFAULT_SETTINGS: NoteExportSettings = {
   pageSize: "a4",
   includeMetadata: true,
   includeDate: true,
+  selectableText: true,
   customCssSnippet: "",
   exportFolder: "exports",
 };
@@ -55,6 +57,11 @@ export class NoteExportSettingTab extends PluginSettingTab {
           defaultValue: DEFAULT_SETTINGS.pageSize,
           options: { a4: "A4", a5: "A5", letter: "Letter", legal: "Legal" },
         },
+      },
+      {
+        name: "Selectable text in PDF",
+        desc: "Add an invisible text layer so PDF text can be selected, copied and searched.",
+        control: { type: "toggle", key: "selectableText", defaultValue: DEFAULT_SETTINGS.selectableText },
       },
       {
         name: "Include metadata",
@@ -125,6 +132,17 @@ export class NoteExportSettingTab extends PluginSettingTab {
             this.plugin.settings.pageSize = value as PageSize;
             await this.plugin.saveSettings();
           })
+      );
+
+    // --- Selectable text ---
+    new Setting(containerEl)
+      .setName("Selectable text in PDF")
+      .setDesc("Add an invisible text layer so PDF text can be selected, copied and searched.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.selectableText).onChange(async (value) => {
+          this.plugin.settings.selectableText = value;
+          await this.plugin.saveSettings();
+        })
       );
 
     // --- Include metadata ---

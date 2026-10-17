@@ -1,18 +1,10 @@
 import { App, TFile, TFolder, Notice, normalizePath } from "obsidian";
-import { PDFDocument, rgb } from "pdf-lib";
 import html2canvas from "html2canvas";
 import { renderNote, buildHtmlDocument } from "./renderer";
+import { collectLayout } from "./pdf/layout";
+import { buildPdf } from "./pdf/build-pdf";
 import type { NoteExportSettings } from "./settings";
 
-// Page sizes in PDF points (1 pt = 1/72 inch)
-const MM = 72 / 25.4;
-const PAGE_FORMATS: Record<string, [number, number]> = {
-  a4: [210 * MM, 297 * MM],
-  a5: [148 * MM, 210 * MM],
-  letter: [612, 792],
-  legal: [612, 1008],
-};
-const PAGE_MARGIN = 15 * MM;
 const RENDER_WIDTH_PX = 800;
 
 // ─────────────────────────────────────────
@@ -108,6 +100,9 @@ export async function exportAsPdf(app: App, file: TFile, settings: NoteExportSet
     await frameDoc.fonts?.ready;
     await sleep(200);
 
+    // Positions of text, links and headings, measured before rasterising
+    const layout = collectLayout(target, file.basename);
+
     const canvas = await html2canvas(target, {
       scale: 2,
       useCORS: true,
@@ -117,29 +112,14 @@ export async function exportAsPdf(app: App, file: TFile, settings: NoteExportSet
       windowWidth: RENDER_WIDTH_PX,
     });
 
-    const [pageWidth, pageHeight] = PAGE_FORMATS[settings.pageSize] ?? PAGE_FORMATS.a4;
-    const imgWidth = pageWidth - 2 * PAGE_MARGIN;
-    const usableHeight = pageHeight - 2 * PAGE_MARGIN;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-    const pngBytes = await canvasToPng(canvas);
-    const pdf = await PDFDocument.create();
-    pdf.setTitle(file.basename);
-    pdf.setCreator("PDF and HTML Note Export");
-    const image = await pdf.embedPng(pngBytes);
-    const white = rgb(1, 1, 1);
-
-    const pageCount = Math.max(1, Math.ceil(imgHeight / usableHeight - 1e-6));
-    for (let i = 0; i < pageCount; i++) {
-      const page = pdf.addPage([pageWidth, pageHeight]);
-      // pdf-lib uses a bottom-left origin: shift the long image up by one
-      // usable page height per page, then mask the top and bottom margins.
-      const imageTop = pageHeight - PAGE_MARGIN + i * usableHeight;
-      page.drawImage(image, { x: PAGE_MARGIN, y: imageTop - imgHeight, width: imgWidth, height: imgHeight });
-      page.drawRectangle({ x: 0, y: pageHeight - PAGE_MARGIN, width: pageWidth, height: PAGE_MARGIN, color: white });
-      page.drawRectangle({ x: 0, y: 0, width: pageWidth, height: PAGE_MARGIN, color: white });
-    }
-    const pdfBytes = await pdf.save();
+    const pdfBytes = await buildPdf({
+      png: await canvasToPng(canvas),
+      cssWidth: RENDER_WIDTH_PX,
+      layout,
+      pageSize: settings.pageSize,
+      title: file.basename,
+      selectableText: settings.selectableText,
+    });
 
     const folder = await ensureFolder(app, settings.exportFolder);
     const path = uniquePath(app, folder, file.basename, "pdf");
