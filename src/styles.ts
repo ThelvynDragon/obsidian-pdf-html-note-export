@@ -58,21 +58,23 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 h1 {
+  color: var(--ne-color-h1, var(--ne-color-heading));
   font-size: 2em;
   padding-bottom: 0.3em;
   border-bottom: 2px solid var(--ne-color-accent);
 }
 
 h2 {
+  color: var(--ne-color-h2, var(--ne-color-heading));
   font-size: 1.5em;
   padding-bottom: 0.2em;
   border-bottom: 1px solid var(--ne-color-border-light);
 }
 
-h3 { font-size: 1.25em; }
-h4 { font-size: 1.1em; }
-h5 { font-size: 1em; color: var(--ne-color-text-muted); }
-h6 { font-size: 0.95em; color: var(--ne-color-text-muted); }
+h3 { font-size: 1.25em; color: var(--ne-color-h3, var(--ne-color-heading)); }
+h4 { font-size: 1.1em; color: var(--ne-color-h4, var(--ne-color-heading)); }
+h5 { font-size: 1em; color: var(--ne-color-h5, var(--ne-color-text-muted)); }
+h6 { font-size: 0.95em; color: var(--ne-color-h6, var(--ne-color-text-muted)); }
 
 /* --- Paragraphs & Text --- */
 p {
@@ -251,7 +253,7 @@ img {
 .ne-metadata .ne-title {
   font-size: 2.2em;
   font-weight: 800;
-  color: var(--ne-color-heading);
+  color: var(--ne-color-h1, var(--ne-color-heading));
   margin: 0 0 0.3em 0;
   line-height: 1.2;
 }

@@ -29,7 +29,7 @@ export const PAGE_FORMATS: Record<string, [number, number]> = {
   letter: [612, 792],
   legal: [612, 1008],
 };
-const MARGIN = 15 * MM;
+export const MARGIN = 15 * MM;
 
 export interface BuildPdfOptions {
   /** PNG of the whole rendered note. */
@@ -43,7 +43,7 @@ export interface BuildPdfOptions {
   selectableText: boolean;
 }
 
-interface Placement {
+export interface Placement {
   page: number;
   /** PDF user-space coordinates (origin bottom-left). */
   x: number;
@@ -119,14 +119,26 @@ export async function buildPdf(opts: BuildPdfOptions): Promise<Uint8Array> {
     font.finalize();
   }
 
+  addLinksAndOutline(pdf, pages, opts.layout, place);
+
+  return pdf.save();
+}
+
+/** Adds clickable links and the heading outline, shared by both PDF modes. */
+export function addLinksAndOutline(
+  pdf: PDFDocument,
+  pages: PDFPage[],
+  layout: Pick<PageLayout, "links" | "headings">,
+  place: (b: Box) => Placement
+): void {
   // ── Heading destinations (outline + in-note links) ─────
-  const destinations = opts.layout.headings.map((h) => {
+  const destinations = layout.headings.map((h) => {
     const at = place({ x: 0, y: h.y, w: 0, h: 0 });
     return pdf.context.obj([pages[at.page].ref, PDFName.of("XYZ"), PDFNull, PDFNumber.of(at.top + 4), PDFNull]);
   });
 
   // ── Clickable links ────────────────────────────────────
-  for (const link of opts.layout.links) {
+  for (const link of layout.links) {
     for (const box of link.boxes) {
       const at = place(box);
       const annot = pdf.context.obj({
@@ -147,11 +159,9 @@ export async function buildPdf(opts: BuildPdfOptions): Promise<Uint8Array> {
   }
 
   // ── Outline (bookmarks panel) ──────────────────────────
-  if (opts.layout.headings.length > 0) {
-    addOutline(pdf, opts.layout.headings.map((h, i) => ({ level: h.level, title: h.title, dest: destinations[i] })));
+  if (layout.headings.length > 0) {
+    addOutline(pdf, layout.headings.map((h, i) => ({ level: h.level, title: h.title, dest: destinations[i] })));
   }
-
-  return pdf.save();
 }
 
 interface OutlineNode {

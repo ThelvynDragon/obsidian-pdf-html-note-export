@@ -17,3 +17,15 @@
   visibility: hidden;
   pointer-events: none;
 }
+
+.pdf-html-note-export-probe {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.pdf-html-note-export-probe .pdf-html-note-export-accent {
+  color: var(--color-accent, var(--interactive-accent));
+}

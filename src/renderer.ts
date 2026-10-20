@@ -41,7 +41,8 @@ export async function renderNote(
 export function buildHtmlDocument(
   rendered: HTMLElement,
   title: string,
-  settings: NoteExportSettings
+  settings: NoteExportSettings,
+  extraCss = ""
 ): string {
   const customCss = settings.customCssSnippet
     ? `\n  <style>\n${settings.customCssSnippet}\n  </style>`
@@ -55,6 +56,7 @@ export function buildHtmlDocument(
   <title>${escapeHtml(title)}</title>
   <style>
 ${EXPORT_CSS}
+${extraCss}
   </style>${customCss}
 </head>
 <body>

@@ -1,8 +1,8 @@
 import { App, TFile, TFolder, Notice, normalizePath } from "obsidian";
-import html2canvas from "html2canvas";
 import { renderNote, buildHtmlDocument } from "./renderer";
-import { collectLayout } from "./pdf/layout";
-import { buildPdf } from "./pdf/build-pdf";
+import { buildColorCss } from "./colors";
+import { VECTOR_FRAME_CSS } from "./pdf/fonts";
+import { renderImagePdf, renderVectorPdf, type PipelineOptions, type PipelineResult } from "./pdf/pipeline";
 import type { NoteExportSettings } from "./settings";
 
 const RENDER_WIDTH_PX = 800;
@@ -57,7 +57,7 @@ export async function exportAsHtml(app: App, file: TFile, settings: NoteExportSe
   const notice = new Notice("Generating HTML…", 0);
   try {
     const rendered = await renderNote(app, file, settings);
-    const html = buildHtmlDocument(rendered, file.basename, settings);
+    const html = buildHtmlDocument(rendered, file.basename, settings, buildColorCss(settings));
 
     const folder = await ensureFolder(app, settings.exportFolder);
     const path = uniquePath(app, folder, file.basename, "html");
@@ -73,21 +73,60 @@ export async function exportAsHtml(app: App, file: TFile, settings: NoteExportSe
 }
 
 // ─────────────────────────────────────────
-//  PDF export (html2canvas + pdf-lib)
+//  PDF export (vector or image, pdf-lib)
 // ─────────────────────────────────────────
 
 export async function exportAsPdf(app: App, file: TFile, settings: NoteExportSettings): Promise<void> {
   const notice = new Notice("Generating PDF…", 0);
-  let iframe: HTMLIFrameElement | null = null;
   try {
     const rendered = await renderNote(app, file, settings);
-    const html = buildHtmlDocument(rendered, file.basename, settings);
+    const colorCss = buildColorCss(settings);
+    const opts: PipelineOptions = {
+      cssWidth: RENDER_WIDTH_PX,
+      pageSize: settings.pageSize,
+      title: file.basename,
+      noteName: file.basename,
+      selectableText: settings.selectableText,
+    };
 
-    // Render in an isolated, off-screen iframe so the export theme
-    // never leaks into Obsidian's own interface.
-    iframe = document.body.createEl("iframe", { cls: "pdf-html-note-export-frame" });
+    let result: PipelineResult | null = null;
+    if (settings.pdfMode === "vector") {
+      try {
+        const html = buildHtmlDocument(rendered.cloneNode(true) as HTMLElement, file.basename, settings, colorCss + VECTOR_FRAME_CSS);
+        result = await withFrame(html, (target) => renderVectorPdf(target, opts));
+      } catch (e) {
+        console.warn("PDF and HTML Note Export: vector rendering failed, falling back to image mode", e);
+        new Notice("Vector rendering failed, using image mode instead.");
+      }
+    }
+    if (!result) {
+      const html = buildHtmlDocument(rendered, file.basename, settings, colorCss);
+      result = await withFrame(html, (target) => renderImagePdf(target, opts));
+    }
+
+    const bytes = result.bytes;
+    const folder = await ensureFolder(app, settings.exportFolder);
+    const path = uniquePath(app, folder, file.basename, "pdf");
+    await writeFile(app, path, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+
+    notice.hide();
+    new Notice(`PDF exported to ${path}`);
+  } catch (e) {
+    notice.hide();
+    console.error("PDF and HTML Note Export: PDF export failed", e);
+    new Notice(`PDF export failed: ${(e as Error).message}`);
+  }
+}
+
+/**
+ * Renders the export document in an isolated, off-screen iframe so the
+ * export theme never leaks into Obsidian's own interface.
+ */
+async function withFrame<T>(html: string, run: (target: HTMLElement) => Promise<T>): Promise<T> {
+  const iframe = document.body.createEl("iframe", { cls: "pdf-html-note-export-frame" });
+  try {
     const loaded = new Promise<void>((resolve) => {
-      iframe?.addEventListener("load", () => resolve(), { once: true });
+      iframe.addEventListener("load", () => resolve(), { once: true });
     });
     iframe.srcdoc = html;
     await loaded;
@@ -99,53 +138,10 @@ export async function exportAsPdf(app: App, file: TFile, settings: NoteExportSet
     // Let fonts and inline images settle
     await frameDoc.fonts?.ready;
     await sleep(200);
-
-    // Positions of text, links and headings, measured before rasterising
-    const layout = collectLayout(target, file.basename);
-
-    const canvas = await html2canvas(target, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      backgroundColor: "#ffffff",
-      width: RENDER_WIDTH_PX,
-      windowWidth: RENDER_WIDTH_PX,
-    });
-
-    const pdfBytes = await buildPdf({
-      png: await canvasToPng(canvas),
-      cssWidth: RENDER_WIDTH_PX,
-      layout,
-      pageSize: settings.pageSize,
-      title: file.basename,
-      selectableText: settings.selectableText,
-    });
-
-    const folder = await ensureFolder(app, settings.exportFolder);
-    const path = uniquePath(app, folder, file.basename, "pdf");
-    await writeFile(app, path, pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength));
-
-    notice.hide();
-    new Notice(`PDF exported to ${path}`);
-  } catch (e) {
-    notice.hide();
-    console.error("PDF and HTML Note Export: PDF export failed", e);
-    new Notice(`PDF export failed: ${(e as Error).message}`);
+    return await run(target);
   } finally {
-    iframe?.remove();
+    iframe.remove();
   }
-}
-
-function canvasToPng(canvas: HTMLCanvasElement): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error("Could not encode the page image"));
-        return;
-      }
-      blob.arrayBuffer().then(resolve, reject);
-    }, "image/png");
-  });
 }
 
 function sleep(ms: number): Promise<void> {

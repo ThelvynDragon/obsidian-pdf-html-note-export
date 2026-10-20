@@ -1,5 +1,6 @@
 import { PDFDocument, PDFHexString, PDFRef, PDFString } from "pdf-lib";
 import { GLYPHLESS_FONT_BASE64 } from "./glyphless-font";
+import { toUnicodeCMap } from "./ttf";
 
 /** Advance width of every glyph, in 1/1000 em. */
 export const GLYPH_WIDTH = 500;
@@ -81,41 +82,10 @@ export class GlyphLessTextFont {
       BaseFont: "GlyphLessFont",
       Encoding: "Identity-H",
       DescendantFonts: [ctx.register(cidFont)],
-      ToUnicode: ctx.register(ctx.flateStream(this.buildToUnicode())),
+      ToUnicode: ctx.register(ctx.flateStream(toUnicodeCMap(this.cids, true))),
     });
     ctx.assign(this.ref, type0);
   }
-
-  private buildToUnicode(): string {
-    const lines = [
-      "/CIDInit /ProcSet findresource begin",
-      "12 dict begin",
-      "begincmap",
-      "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
-      "/CMapName /Adobe-Identity-UCS def",
-      "/CMapType 2 def",
-      "1 begincodespacerange",
-      "<0000> <FFFF>",
-      "endcodespacerange",
-    ];
-    const entries = Array.from(this.cids.entries());
-    for (let i = 0; i < entries.length; i += 100) {
-      const chunk = entries.slice(i, i + 100);
-      lines.push(`${chunk.length} beginbfchar`);
-      for (const [text, cid] of chunk) {
-        lines.push(`<${cid.toString(16).padStart(4, "0")}> <${utf16Hex(text)}>`);
-      }
-      lines.push("endbfchar");
-    }
-    lines.push("endcmap", "CMapName currentdict /CMap defineresource pop", "end", "end");
-    return lines.join("\n");
-  }
-}
-
-function utf16Hex(text: string): string {
-  let hex = "";
-  for (let i = 0; i < text.length; i++) hex += text.charCodeAt(i).toString(16).padStart(4, "0");
-  return hex;
 }
 
 function base64ToBytes(b64: string): Uint8Array {
